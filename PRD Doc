@@ -1,0 +1,1611 @@
+# QUIZ APP — FOUR-PERSON MVP PRD
+
+## Project Goal
+
+Build a simple Mentimeter/Kahoot-inspired quiz application where:
+
+1. A host creates a quiz.
+2. The host adds multiple-choice questions.
+3. The host publishes the quiz and receives a join code.
+4. A participant joins using the code and enters their name.
+5. The participant answers the questions.
+6. The participant submits the quiz.
+7. The backend calculates the score.
+8. The participant sees their result.
+9. Participants appear on a leaderboard.
+
+The application must prioritize a complete working flow over advanced features.
+
+---
+
+# TECHNOLOGY STACK
+
+## Frontend
+
+* Next.js
+* React
+* TypeScript
+* Tailwind CSS if available
+
+## Backend
+
+* Node.js
+* Express.js
+
+## Database
+
+* Neon PostgreSQL
+
+## Storage
+
+* Cloudinary
+
+## Communication
+
+* REST API
+
+Do NOT implement WebSockets/Socket.IO for this MVP.
+
+---
+
+# GLOBAL PROJECT STRUCTURE
+
+```text
+quiz-app/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── types/
+│
+└── backend/
+    └── src/
+        ├── routes/
+        ├── controllers/
+        ├── services/
+        ├── db/
+        └── server.ts
+```
+
+---
+
+# SHARED DATABASE MODEL
+
+All four parts depend on the same conceptual data model.
+
+## Quiz
+
+```text
+id
+title
+description
+code
+created_at
+```
+
+## Question
+
+```text
+id
+quiz_id
+question_text
+image_url
+question_order
+```
+
+## Option
+
+```text
+id
+question_id
+option_text
+is_correct
+```
+
+## Participant
+
+```text
+id
+quiz_id
+name
+created_at
+```
+
+## Answer
+
+```text
+id
+participant_id
+question_id
+selected_option_id
+is_correct
+```
+
+## Result
+
+```text
+id
+participant_id
+quiz_id
+score
+total_questions
+percentage
+created_at
+```
+
+---
+
+# PART 1 — HOST QUIZ CREATION
+
+## Owner
+
+**Person 1**
+
+## Goal
+
+Build the complete host-side experience for creating and publishing a quiz.
+
+The person responsible for this part owns the UI and any frontend logic required for:
+
+```text
+Landing
+    ↓
+Create Quiz
+    ↓
+Quiz Editor
+    ↓
+Add Questions
+    ↓
+Publish Quiz
+    ↓
+Display Join Code
+```
+
+---
+
+# 1.1 Landing Page
+
+Route:
+
+```text
+/
+```
+
+Create a clean landing page.
+
+Display:
+
+```text
+Quizora
+
+Create. Share. Play.
+
+[ Create a Quiz ]
+
+[ Join a Quiz ]
+```
+
+Requirements:
+
+* Responsive
+* Modern
+* Clear CTA buttons
+* Create Quiz navigates to `/host/create`
+* Join Quiz navigates to `/join`
+
+---
+
+# 1.2 Create Quiz Page
+
+Route:
+
+```text
+/host/create
+```
+
+Display:
+
+```text
+Create a Quiz
+
+Quiz Title
+[________________________]
+
+Description
+[________________________]
+
+[ Create Quiz ]
+```
+
+Validation:
+
+* Title required
+* Description optional
+
+On submit:
+
+```text
+POST /api/quizzes
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "quiz-id",
+    "title": "General Knowledge"
+  }
+}
+```
+
+After success:
+
+```text
+/host/quiz/:quizId
+```
+
+---
+
+# 1.3 Quiz Editor
+
+Route:
+
+```text
+/host/quiz/:quizId
+```
+
+Display:
+
+* Quiz title
+* Description
+* List of questions
+* Add Question button
+* Publish Quiz button
+
+Example:
+
+```text
+General Knowledge
+
+Questions
+
+┌──────────────────────────────┐
+│ 1. What is the capital of    │
+│ France?                      │
+│                              │
+│ A. London                    │
+│ B. Paris ✓                   │
+│ C. Berlin                    │
+│ D. Madrid                    │
+│                              │
+│ [Edit] [Delete]              │
+└──────────────────────────────┘
+
+[ + Add Question ]
+
+[ Publish Quiz ]
+```
+
+---
+
+# 1.4 Add Question
+
+Create a question form.
+
+Fields:
+
+```text
+Question
+[________________________]
+
+Option A
+[________________________]
+
+Option B
+[________________________]
+
+Option C
+[________________________]
+
+Option D
+[________________________]
+
+Correct Answer
+
+○ A
+○ B
+○ C
+○ D
+
+Question Image (optional)
+
+[ Upload Image ]
+
+[ Save Question ]
+```
+
+Requirements:
+
+* Four options required
+* One correct answer required
+* Question text required
+* Image optional
+* Default points = 1
+
+---
+
+# 1.5 Image Upload
+
+If the user uploads an image:
+
+```text
+Frontend
+    ↓
+POST /api/upload
+    ↓
+Express
+    ↓
+Cloudinary
+    ↓
+Image URL
+```
+
+Store the returned image URL when creating the question.
+
+Do not expose Cloudinary secret credentials to the frontend.
+
+If Cloudinary is unavailable, the application must still work without images.
+
+---
+
+# 1.6 Delete Question
+
+Each question should have:
+
+```text
+[ Delete ]
+```
+
+Call:
+
+```text
+DELETE /api/questions/:questionId
+```
+
+Ask for confirmation before deletion.
+
+---
+
+# 1.7 Publish Quiz
+
+Button:
+
+```text
+Publish Quiz
+```
+
+Call:
+
+```text
+POST /api/quizzes/:quizId/publish
+```
+
+Backend generates a unique 6-character code.
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "code": "A7K92P"
+  }
+}
+```
+
+After publishing display:
+
+```text
+Your Quiz Is Ready!
+
+JOIN CODE
+
+A7K92P
+
+[ Copy Code ]
+
+Share this code with your participants.
+```
+
+---
+
+# 1.8 Part 1 Definition of Done
+
+Person 1 is finished when:
+
+* Landing page works
+* Create quiz works
+* Quiz editor works
+* Questions can be added
+* Questions can be deleted
+* Optional image upload works
+* Quiz can be published
+* Join code is displayed
+* All screens are responsive
+
+---
+
+# PART 2 — PARTICIPANT QUIZ FLOW
+
+## Owner
+
+**Person 2**
+
+## Goal
+
+Build everything a participant needs from joining a quiz until submitting it.
+
+Flow:
+
+```text
+Join
+ ↓
+Enter Code
+ ↓
+Enter Name
+ ↓
+Join Quiz
+ ↓
+View Questions
+ ↓
+Select Answers
+ ↓
+Next
+ ↓
+Submit
+```
+
+---
+
+# 2.1 Join Page
+
+Route:
+
+```text
+/join
+```
+
+Display:
+
+```text
+Join Quiz
+
+Quiz Code
+[____________]
+
+Your Name
+[____________]
+
+[ Join Quiz ]
+```
+
+Validation:
+
+* Code required
+* Name required
+
+Call:
+
+```text
+POST /api/quizzes/join
+```
+
+Request:
+
+```json
+{
+  "code": "A7K92P",
+  "name": "Alex"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "participantId": "participant-id",
+    "quizId": "quiz-id"
+  }
+}
+```
+
+After success:
+
+```text
+/play/:quizCode/:participantId
+```
+
+---
+
+# 2.2 Invalid Join
+
+If quiz code does not exist:
+
+```text
+Quiz not found.
+Please check your code.
+```
+
+If name is empty:
+
+```text
+Please enter your name.
+```
+
+---
+
+# 2.3 Quiz Screen
+
+Route:
+
+```text
+/play/:quizCode/:participantId
+```
+
+Display:
+
+```text
+Question 2 of 5
+
+What is the capital of France?
+
+[ London ]
+
+[ Paris ]
+
+[ Berlin ]
+
+[ Madrid ]
+
+[ Next ]
+```
+
+Requirements:
+
+* Show current question number
+* Show total questions
+* Display question text
+* Display image if available
+* Display four options
+* Allow only one selected answer
+* Highlight selected option
+* Disable Next until an answer is selected
+
+---
+
+# 2.4 Loading Questions
+
+Call:
+
+```text
+GET /api/quizzes/code/:code
+```
+
+The backend response should contain:
+
+```json
+{
+  "id": "quiz-id",
+  "title": "General Knowledge",
+  "questions": [
+    {
+      "id": "q1",
+      "questionText": "What is the capital of France?",
+      "imageUrl": null,
+      "options": [
+        {
+          "id": "o1",
+          "text": "London"
+        },
+        {
+          "id": "o2",
+          "text": "Paris"
+        }
+      ]
+    }
+  ]
+}
+```
+
+IMPORTANT:
+
+The participant response MUST NOT contain:
+
+```text
+is_correct
+```
+
+---
+
+# 2.5 Answer Submission
+
+When participant selects an answer and clicks Next:
+
+```text
+POST /api/participants/:participantId/answers
+```
+
+Request:
+
+```json
+{
+  "questionId": "q1",
+  "selectedOptionId": "o2"
+}
+```
+
+Do not calculate correctness on the frontend.
+
+The backend determines whether the answer is correct.
+
+---
+
+# 2.6 Final Question
+
+After the last question:
+
+Display:
+
+```text
+You've completed all questions!
+
+[ Submit Quiz ]
+```
+
+Call:
+
+```text
+POST /api/participants/:participantId/submit
+```
+
+On success redirect to:
+
+```text
+/results/:participantId
+```
+
+---
+
+# 2.7 Part 2 Definition of Done
+
+Person 2 is finished when:
+
+* Participant can enter code
+* Participant can enter name
+* Participant can join
+* Questions load
+* Options can be selected
+* Next works
+* Answers are submitted
+* Final quiz can be submitted
+* Participant is redirected to results
+* Mobile UI works
+
+---
+
+# PART 3 — RESULTS + LEADERBOARD
+
+## Owner
+
+**Person 3**
+
+## Goal
+
+Build everything after quiz submission.
+
+Flow:
+
+```text
+Submit Quiz
+    ↓
+Result
+    ↓
+Score
+    ↓
+Leaderboard
+```
+
+---
+
+# 3.1 Results Page
+
+Route:
+
+```text
+/results/:participantId
+```
+
+Call:
+
+```text
+GET /api/participants/:participantId/result
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "participantName": "Alex",
+    "quizTitle": "General Knowledge",
+    "score": 8,
+    "totalQuestions": 10,
+    "percentage": 80,
+    "correctAnswers": 8,
+    "incorrectAnswers": 2,
+    "quizId": "quiz-id"
+  }
+}
+```
+
+---
+
+# 3.2 Result UI
+
+Display:
+
+```text
+Quiz Complete!
+
+Alex
+
+8 / 10
+
+80%
+
+Correct
+8
+
+Incorrect
+2
+
+[ View Leaderboard ]
+```
+
+Make this page visually impressive.
+
+Use:
+
+* Large score
+* Progress indicator if easy
+* Clear correct/incorrect counts
+* Strong CTA
+
+---
+
+# 3.3 Leaderboard
+
+Route:
+
+```text
+/leaderboard/:quizId
+```
+
+Call:
+
+```text
+GET /api/quizzes/:quizId/leaderboard
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "rank": 1,
+      "name": "Alex",
+      "score": 10,
+      "totalQuestions": 10,
+      "percentage": 100
+    },
+    {
+      "rank": 2,
+      "name": "Sarah",
+      "score": 9,
+      "totalQuestions": 10,
+      "percentage": 90
+    }
+  ]
+}
+```
+
+---
+
+# 3.4 Leaderboard UI
+
+Display:
+
+```text
+🏆 Leaderboard
+
+🥇 Alex       10/10
+🥈 Sarah       9/10
+🥉 Rahul       8/10
+
+4. Priya       7/10
+5. John        6/10
+```
+
+Requirements:
+
+* Sort by score descending
+* Display rank
+* Display participant name
+* Display score
+* Display percentage
+* Highlight current participant if possible
+
+---
+
+# 3.5 Host Results
+
+If time permits, create:
+
+```text
+/host/quiz/:quizId/results
+```
+
+Use the same leaderboard API.
+
+Display:
+
+```text
+Quiz Results
+
+Participants: 10
+
+Rank | Name | Score | Percentage
+```
+
+This is secondary to the participant results page.
+
+---
+
+# 3.6 Part 3 Definition of Done
+
+Person 3 is finished when:
+
+* Results page works
+* Score is displayed
+* Percentage is displayed
+* Correct/incorrect count is displayed
+* Leaderboard works
+* Ranking works
+* Host can view leaderboard if time permits
+* Responsive UI works
+
+---
+
+# PART 4 — BACKEND + DATABASE + CLOUDINARY
+
+## Owner
+
+**Person 4**
+
+## Goal
+
+Build the backend foundation and APIs required by Parts 1–3.
+
+This person is responsible for:
+
+```text
+Express
+ ↓
+API
+ ↓
+Neon PostgreSQL
+ ↓
+Score Calculation
+ ↓
+Cloudinary
+```
+
+---
+
+# 4.1 Backend Setup
+
+Create Express server.
+
+Suggested structure:
+
+```text
+backend/
+└── src/
+    ├── routes/
+    ├── controllers/
+    ├── services/
+    ├── db/
+    ├── middleware/
+    └── server.ts
+```
+
+Required:
+
+* Express
+* JSON middleware
+* CORS
+* Environment variables
+* Error handling
+* Database connection
+
+---
+
+# 4.2 Neon Database
+
+Create:
+
+## quizzes
+
+```text
+id
+title
+description
+code
+created_at
+```
+
+## questions
+
+```text
+id
+quiz_id
+question_text
+image_url
+question_order
+```
+
+## options
+
+```text
+id
+question_id
+option_text
+is_correct
+```
+
+## participants
+
+```text
+id
+quiz_id
+name
+created_at
+```
+
+## answers
+
+```text
+id
+participant_id
+question_id
+selected_option_id
+is_correct
+```
+
+## results
+
+```text
+id
+participant_id
+quiz_id
+score
+total_questions
+percentage
+created_at
+```
+
+---
+
+# 4.3 Quiz APIs
+
+## Create Quiz
+
+```text
+POST /api/quizzes
+```
+
+Request:
+
+```json
+{
+  "title": "General Knowledge",
+  "description": "A quick quiz"
+}
+```
+
+---
+
+## Get Quiz
+
+```text
+GET /api/quizzes/:id
+```
+
+Return quiz information and questions.
+
+---
+
+## Add Question
+
+```text
+POST /api/quizzes/:id/questions
+```
+
+Request:
+
+```json
+{
+  "questionText": "What is the capital of France?",
+  "imageUrl": null,
+  "options": [
+    {
+      "text": "London",
+      "isCorrect": false
+    },
+    {
+      "text": "Paris",
+      "isCorrect": true
+    },
+    {
+      "text": "Berlin",
+      "isCorrect": false
+    },
+    {
+      "text": "Madrid",
+      "isCorrect": false
+    }
+  ]
+}
+```
+
+---
+
+## Delete Question
+
+```text
+DELETE /api/questions/:id
+```
+
+---
+
+# 4.4 Publish Quiz
+
+```text
+POST /api/quizzes/:id/publish
+```
+
+Generate a unique 6-character code.
+
+Example:
+
+```text
+A7K92P
+```
+
+Save it in the quiz record.
+
+Return:
+
+```json
+{
+  "success": true,
+  "data": {
+    "code": "A7K92P"
+  }
+}
+```
+
+---
+
+# 4.5 Get Quiz By Code
+
+```text
+GET /api/quizzes/code/:code
+```
+
+Return:
+
+* Quiz
+* Questions
+* Options
+
+But NEVER return:
+
+```text
+is_correct
+```
+
+to participants.
+
+---
+
+# 4.6 Join Quiz
+
+```text
+POST /api/quizzes/join
+```
+
+Request:
+
+```json
+{
+  "code": "A7K92P",
+  "name": "Alex"
+}
+```
+
+Backend:
+
+1. Find quiz.
+2. Verify it exists.
+3. Create participant.
+4. Return participant ID.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "participantId": "123",
+    "quizId": "456"
+  }
+}
+```
+
+---
+
+# 4.7 Submit Answer
+
+```text
+POST /api/participants/:participantId/answers
+```
+
+Request:
+
+```json
+{
+  "questionId": "q1",
+  "selectedOptionId": "o2"
+}
+```
+
+Backend:
+
+1. Find participant.
+2. Find question.
+3. Find selected option.
+4. Check `is_correct`.
+5. Save answer.
+
+Response:
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+# 4.8 Submit Quiz
+
+```text
+POST /api/participants/:participantId/submit
+```
+
+Backend:
+
+1. Find participant.
+2. Find all answers.
+3. Count correct answers.
+4. Calculate percentage.
+5. Create result.
+6. Return result.
+
+Example:
+
+```json
+{
+  "success": true,
+  "data": {
+    "score": 8,
+    "totalQuestions": 10,
+    "percentage": 80
+  }
+}
+```
+
+---
+
+# 4.9 Get Result
+
+```text
+GET /api/participants/:participantId/result
+```
+
+Return:
+
+* Participant name
+* Quiz title
+* Score
+* Total questions
+* Percentage
+* Correct answers
+* Incorrect answers
+* Quiz ID
+
+---
+
+# 4.10 Leaderboard
+
+```text
+GET /api/quizzes/:quizId/leaderboard
+```
+
+Query results sorted by:
+
+1. Score descending
+2. Completion time ascending
+
+Return:
+
+```json
+[
+  {
+    "rank": 1,
+    "name": "Alex",
+    "score": 10,
+    "totalQuestions": 10,
+    "percentage": 100
+  }
+]
+```
+
+---
+
+# 4.11 Cloudinary
+
+Endpoint:
+
+```text
+POST /api/upload
+```
+
+Flow:
+
+```text
+Frontend
+   ↓
+Express
+   ↓
+Cloudinary
+   ↓
+URL
+   ↓
+Frontend
+```
+
+Environment variables:
+
+```text
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+```
+
+Never send the API secret to the frontend.
+
+If Cloudinary fails, return a clear error.
+
+---
+
+# 4.12 Backend Security Rules
+
+Minimum requirements:
+
+* Validate request bodies
+* Validate IDs
+* Validate quiz code
+* Validate selected option
+* Never trust frontend score
+* Never send correct answers to participants
+* Never expose environment secrets
+* Prevent duplicate quiz submission
+* Prevent invalid question/option relationships
+
+---
+
+# 4.13 Part 4 Definition of Done
+
+Person 4 is finished when:
+
+* Express server runs
+* Neon database connects
+* Database tables exist
+* Quiz creation works
+* Questions can be created
+* Quiz can be published
+* Quiz code is generated
+* Participant can join
+* Answers can be submitted
+* Score is calculated
+* Results are stored
+* Leaderboard works
+* Cloudinary upload works or gracefully fails
+
+---
+
+# SHARED API CONTRACT
+
+All four people must use these exact endpoints.
+
+| Method | Endpoint                        | Owner  |
+| ------ | ------------------------------- | ------ |
+| POST   | `/api/quizzes`                  | Part 4 |
+| GET    | `/api/quizzes/:id`              | Part 4 |
+| POST   | `/api/quizzes/:id/questions`    | Part 4 |
+| DELETE | `/api/questions/:id`            | Part 4 |
+| POST   | `/api/quizzes/:id/publish`      | Part 4 |
+| GET    | `/api/quizzes/code/:code`       | Part 4 |
+| POST   | `/api/quizzes/join`             | Part 4 |
+| POST   | `/api/participants/:id/answers` | Part 4 |
+| POST   | `/api/participants/:id/submit`  | Part 4 |
+| GET    | `/api/participants/:id/result`  | Part 4 |
+| GET    | `/api/quizzes/:id/leaderboard`  | Part 4 |
+| POST   | `/api/upload`                   | Part 4 |
+
+---
+
+# SHARED API RESPONSE FORMAT
+
+Every API should use:
+
+### Success
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+### Error
+
+```json
+{
+  "success": false,
+  "message": "Quiz not found"
+}
+```
+
+---
+
+# INTEGRATION CONTRACT
+
+Each person can develop independently using mock data.
+
+## Part 1 needs
+
+```text
+POST /api/quizzes
+POST /api/quizzes/:id/questions
+DELETE /api/questions/:id
+POST /api/quizzes/:id/publish
+```
+
+## Part 2 needs
+
+```text
+POST /api/quizzes/join
+GET /api/quizzes/code/:code
+POST /api/participants/:id/answers
+POST /api/participants/:id/submit
+```
+
+## Part 3 needs
+
+```text
+GET /api/participants/:id/result
+GET /api/quizzes/:id/leaderboard
+```
+
+## Part 4 provides all APIs.
+
+---
+
+# SHARED FRONTEND TYPES
+
+Create:
+
+```text
+frontend/types/index.ts
+```
+
+Use these types:
+
+```typescript
+export interface Quiz {
+  id: string;
+  title: string;
+  description?: string;
+  code?: string;
+}
+
+export interface Option {
+  id: string;
+  text: string;
+}
+
+export interface Question {
+  id: string;
+  questionText: string;
+  imageUrl?: string | null;
+  options: Option[];
+}
+
+export interface Participant {
+  id: string;
+  name: string;
+  quizId: string;
+}
+
+export interface Result {
+  participantName: string;
+  quizTitle: string;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  correctAnswers: number;
+  incorrectAnswers: number;
+  quizId: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+}
+```
+
+---
+
+# GIT RESPONSIBILITIES
+
+Each person should work on their own branch.
+
+```text
+main
+│
+├── feature/host
+├── feature/participant
+├── feature/results
+└── feature/backend
+```
+
+Do not directly edit another person's module unless necessary.
+
+---
+
+# IMPORTANT SHARED RULE
+
+Do not create multiple versions of the same component.
+
+For example, there should be ONE:
+
+```text
+api.ts
+```
+
+and ONE shared type definition.
+
+If you need something from another person's module, communicate before changing their files.
+
+---
+
+# FINAL INTEGRATION TEST
+
+After all four parts are complete, test this exact scenario.
+
+## Host
+
+```text
+Landing
+ ↓
+Create Quiz
+ ↓
+Add 5 Questions
+ ↓
+Publish
+ ↓
+Receive ABC123
+```
+
+## Participant 1
+
+```text
+Join
+ ↓
+ABC123
+ ↓
+Alex
+ ↓
+Answer 5 Questions
+ ↓
+Submit
+ ↓
+8/10
+```
+
+## Participant 2
+
+```text
+Join
+ ↓
+ABC123
+ ↓
+Sarah
+ ↓
+Answer 5 Questions
+ ↓
+Submit
+ ↓
+7/10
+```
+
+## Leaderboard
+
+Must show:
+
+```text
+🥇 Alex     8/10
+🥈 Sarah    7/10
+```
+
+If this works, the core application is complete.
+
+---
+
+# PRIORITY RULE
+
+If time runs out, cut features in this order:
+
+1. Host results dashboard
+2. Cloudinary images
+3. Question editing
+4. Question deletion
+5. UI animations
+6. Advanced styling
+
+NEVER cut:
+
+1. Quiz creation
+2. Question creation
+3. Quiz code
+4. Joining
+5. Answering
+6. Score calculation
+7. Results
+8. Leaderboard
+
+The project succeeds if the complete quiz journey works from creation to leaderboard.
