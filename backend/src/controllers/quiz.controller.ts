@@ -3,6 +3,7 @@ import {
   createQuestion,
   createQuiz,
   getPublishedQuizByCode,
+  getLeaderboardByCode,
   getQuizById,
   joinPublishedQuiz,
   publishQuiz,
@@ -77,6 +78,27 @@ export async function getPublishedQuizByCodeController(
   }
 
   response.status(200).json(quiz);
+}
+
+export async function getLeaderboardController(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const { code } = request.params;
+
+  if (typeof code !== "string" || !/^[A-Za-z0-9]{6}$/.test(code)) {
+    response.status(404).json({ error: "Quiz not found" });
+    return;
+  }
+
+  const leaderboard = await getLeaderboardByCode(code);
+
+  if (!leaderboard) {
+    response.status(404).json({ error: "Quiz not found" });
+    return;
+  }
+
+  response.status(200).json(leaderboard);
 }
 
 export async function createQuestionController(

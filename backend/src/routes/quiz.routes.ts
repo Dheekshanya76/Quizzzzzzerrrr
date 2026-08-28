@@ -3,6 +3,7 @@ import {
   createQuestionController,
   createQuizController,
   getPublishedQuizByCodeController,
+  getLeaderboardController,
   getQuizController,
   joinQuizController,
   publishQuizController,
@@ -17,4 +18,5 @@ quizRouter.post("/:id/publish", publishQuizController);
 quizRouter.post("/code/:code/join", joinQuizController);
 quizRouter.post("/code/:code/submit", submitQuizController);
 quizRouter.get("/code/:code", getPublishedQuizByCodeController);
+quizRouter.get("/code/:code/leaderboard", getLeaderboardController);
 quizRouter.get("/:id", getQuizController);

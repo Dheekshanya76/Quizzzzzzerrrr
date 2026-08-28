@@ -482,3 +482,41 @@ export async function submitQuiz(
     client.release();
   }
 }
+
+export interface LeaderboardEntry {
+  participantName: string;
+  score: number;
+  totalQuestions: number;
+  percentage: string;
+  completionTime: Date;
+}
+
+export async function getLeaderboardByCode(
+  code: string
+): Promise<LeaderboardEntry[] | null> {
+  const quizResult = await pool.query(
+    "SELECT 1 FROM quizzes WHERE code = $1",
+    [code]
+  );
+
+  if (quizResult.rowCount === 0) {
+    return null;
+  }
+
+  const result = await pool.query<LeaderboardEntry>(
+    `SELECT
+       p.name AS "participantName",
+       r.score,
+       r.total_questions AS "totalQuestions",
+       r.percentage::text AS percentage,
+       r.completion_time AS "completionTime"
+     FROM results r
+     INNER JOIN quizzes q ON q.id = r.quiz_id
+     INNER JOIN participants p ON p.id = r.participant_id
+     WHERE q.code = $1
+     ORDER BY r.score DESC, r.completion_time ASC`,
+    [code]
+  );
+
+  return result.rows;
+}
