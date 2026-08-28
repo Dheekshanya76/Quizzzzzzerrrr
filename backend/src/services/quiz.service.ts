@@ -472,12 +472,16 @@ export async function submitQuiz(
       throw error;
     }
   } catch (error) {
+    const submissionError = isUniqueViolation(error)
+      ? new SubmissionError("Quiz has already been submitted", 409)
+      : error;
+
     try {
       await client.query("ROLLBACK");
     } catch {
       // Preserve the original submission or database error.
     }
-    throw error;
+    throw submissionError;
   } finally {
     client.release();
   }
