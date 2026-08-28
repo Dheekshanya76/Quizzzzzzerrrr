@@ -1,0 +1,38 @@
+{
+  "name": "quizzzzzzerrrr",
+  "version": "1.0.0",
+  "description": "Quiz application backend",
+  "main": "backend/dist/server.js",
+  "scripts": {
+    "build": "tsc -p backend/tsconfig.json",
+    "dev": "tsx watch backend/src/server.ts",
+    "start": "node backend/dist/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dheekshanya76/Quizzzzzzerrrr.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  },
+  "bugs": {
+    "url": "https://github.com/Dheekshanya76/Quizzzzzzerrrr/issues"
+  },
+  "homepage": "https://github.com/Dheekshanya76/Quizzzzzzerrrr#readme"
+}
