@@ -1,0 +1,2 @@
+ALTER TABLE quizzes
+    ALTER COLUMN code DROP NOT NULL;
