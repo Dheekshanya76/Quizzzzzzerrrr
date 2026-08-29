@@ -3,21 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-type Question = {
-  id: string;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-};
-
-type Quiz = {
-  id: string;
-  title: string;
-  description: string;
-  questions: Question[];
-  published: boolean;
-  code: string;
-};
+import {
+  getQuiz,
+  createQuestion,
+  publishQuiz,
+  deleteQuestion,
+  type QuizResponse,
+} from "../../../../lib/api";
 
 export default function QuizEditorPage() {
   const params = useParams();
@@ -25,29 +17,49 @@ export default function QuizEditorPage() {
 
   const quizId = params.quizId as string;
 
-  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [quiz, setQuiz] = useState<QuizResponse | null>(null);
 
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", "", "", ""]);
   const [correctAnswer, setCorrectAnswer] = useState(0);
 
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const storedQuiz = localStorage.getItem(`quiz-${quizId}`);
+    async function loadQuiz() {
+      try {
+        setLoading(true);
+        setError("");
 
-    if (storedQuiz) {
-      setQuiz(JSON.parse(storedQuiz));
+        const data = await getQuiz(quizId);
+        setQuiz(data);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load quiz."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (quizId) {
+      loadQuiz();
     }
   }, [quizId]);
 
   function updateOption(index: number, value: string) {
-    const updated = [...options];
-    updated[index] = value;
-    setOptions(updated);
+    setOptions((current) => {
+      const updated = [...current];
+      updated[index] = value;
+      return updated;
+    });
   }
 
-  function addQuestion() {
+  async function addQuestion() {
     setError("");
 
     if (!question.trim()) {
@@ -60,83 +72,133 @@ export default function QuizEditorPage() {
       return;
     }
 
-    if (!quiz) return;
+    try {
+      setSaving(true);
 
-    const newQuestion: Question = {
-      id: crypto.randomUUID(),
-      question: question.trim(),
-      options: options.map((option) => option.trim()),
-      correctAnswer,
-    };
+      const newQuestion = await createQuestion(quizId, {
+        questionText: question.trim(),
+        imageUrl: null,
+        options: options.map((option, index) => ({
+          text: option.trim(),
+          isCorrect: index === correctAnswer,
+        })),
+      });
 
-    const updatedQuiz = {
-      ...quiz,
-      questions: [...quiz.questions, newQuestion],
-    };
+      setQuiz((current) => {
+        if (!current) {
+          return current;
+        }
 
-    setQuiz(updatedQuiz);
+        return {
+          ...current,
+          questions: [
+            ...(current.questions || []),
+            newQuestion,
+          ],
+        };
+      });
 
-    localStorage.setItem(
-      `quiz-${quizId}`,
-      JSON.stringify(updatedQuiz)
-    );
-
-    setQuestion("");
-    setOptions(["", "", "", ""]);
-    setCorrectAnswer(0);
+      setQuestion("");
+      setOptions(["", "", "", ""]);
+      setCorrectAnswer(0);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to add question."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function removeQuestion(id: string) {
-    if (!quiz) return;
-
-    const updatedQuiz = {
-      ...quiz,
-      questions: quiz.questions.filter(
-        (item) => item.id !== id
-      ),
-    };
-
-    setQuiz(updatedQuiz);
-
-    localStorage.setItem(
-      `quiz-${quizId}`,
-      JSON.stringify(updatedQuiz)
-    );
-  }
-
-  function publishQuiz() {
+  async function removeQuestion(id: string) {
     setError("");
 
-    if (!quiz) return;
+    try {
+      await deleteQuestion(id);
 
-    if (quiz.questions.length === 0) {
-      setError("Add at least one question before publishing.");
+      setQuiz((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          questions: (current.questions || []).filter(
+            (item) => String(item.id) !== String(id)
+          ),
+        };
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to remove question."
+      );
+    }
+  }
+
+  async function handlePublish() {
+    setError("");
+
+    if (!quiz) {
       return;
     }
 
-    const code = Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase();
+    if (!quiz.questions || quiz.questions.length === 0) {
+      setError(
+        "Add at least one question before publishing."
+      );
+      return;
+    }
 
-    const updatedQuiz = {
-      ...quiz,
-      published: true,
-      code,
-    };
+    try {
+      setSaving(true);
 
-    localStorage.setItem(
-      `quiz-${quizId}`,
-      JSON.stringify(updatedQuiz)
+      const updatedQuiz = await publishQuiz(quizId);
+
+      setQuiz(updatedQuiz);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to publish quiz."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <p>Loading quiz...</p>
+      </main>
     );
-
-    setQuiz(updatedQuiz);
   }
 
   if (!quiz) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p>Loading quiz...</p>
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <div className="text-center">
+          <h1 className="mb-2 text-2xl font-bold">
+            Quiz not found
+          </h1>
+
+          {error && (
+            <p className="mb-4 text-red-600">
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={() => router.push("/")}
+            className="rounded-lg bg-black px-6 py-3 font-semibold text-white"
+          >
+            Back to Home
+          </button>
+        </div>
       </main>
     );
   }
@@ -145,7 +207,6 @@ export default function QuizEditorPage() {
     return (
       <main className="min-h-screen p-6">
         <div className="mx-auto max-w-2xl">
-
           <div className="mb-8 text-center">
             <h1 className="text-4xl font-bold">
               Quiz Published!
@@ -157,26 +218,29 @@ export default function QuizEditorPage() {
           </div>
 
           <div className="rounded-2xl border p-8 text-center shadow-sm">
-
             <p className="mb-3 text-gray-600">
               Quiz Code
             </p>
 
             <div className="mb-6 text-5xl font-bold tracking-widest">
-              {quiz.code}
+              {quiz.code || "------"}
             </div>
 
             <h2 className="mb-2 text-2xl font-bold">
               {quiz.title}
             </h2>
 
-            <p className="mb-6 text-gray-600">
-              {quiz.description}
-            </p>
+            {quiz.description && (
+              <p className="mb-6 text-gray-600">
+                {quiz.description}
+              </p>
+            )}
 
             <p className="mb-8">
-              {quiz.questions.length} question
-              {quiz.questions.length !== 1 ? "s" : ""}
+              {(quiz.questions || []).length} question
+              {(quiz.questions || []).length !== 1
+                ? "s"
+                : ""}
             </p>
 
             <button
@@ -185,9 +249,7 @@ export default function QuizEditorPage() {
             >
               Back to Home
             </button>
-
           </div>
-
         </div>
       </main>
     );
@@ -196,7 +258,6 @@ export default function QuizEditorPage() {
   return (
     <main className="min-h-screen p-6">
       <div className="mx-auto max-w-3xl">
-
         <div className="mb-8">
           <h1 className="text-3xl font-bold">
             {quiz.title}
@@ -210,7 +271,6 @@ export default function QuizEditorPage() {
         </div>
 
         <div className="mb-6 rounded-2xl border p-6 shadow-sm">
-
           <h2 className="mb-6 text-2xl font-bold">
             Add Question
           </h2>
@@ -221,10 +281,12 @@ export default function QuizEditorPage() {
 
           <textarea
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) =>
+              setQuestion(e.target.value)
+            }
             placeholder="Enter your question"
             rows={3}
-            className="mb-5 w-full rounded-lg border p-3"
+            className="mb-5 w-full rounded-lg border p-3 outline-none focus:ring-2"
           />
 
           <label className="mb-3 block font-medium">
@@ -240,17 +302,22 @@ export default function QuizEditorPage() {
                 type="radio"
                 name="correct"
                 checked={correctAnswer === index}
-                onChange={() => setCorrectAnswer(index)}
+                onChange={() =>
+                  setCorrectAnswer(index)
+                }
               />
 
               <input
                 type="text"
                 value={option}
                 onChange={(e) =>
-                  updateOption(index, e.target.value)
+                  updateOption(
+                    index,
+                    e.target.value
+                  )
                 }
                 placeholder={`Option ${index + 1}`}
-                className="flex-1 rounded-lg border p-3"
+                className="flex-1 rounded-lg border p-3 outline-none focus:ring-2"
               />
             </div>
           ))}
@@ -263,73 +330,93 @@ export default function QuizEditorPage() {
 
           <button
             onClick={addQuestion}
-            className="w-full rounded-lg bg-black px-6 py-3 font-semibold text-white"
+            disabled={saving}
+            className="w-full rounded-lg bg-black px-6 py-3 font-semibold text-white disabled:opacity-50"
           >
-            Add Question
+            {saving ? "Saving..." : "Add Question"}
           </button>
-
         </div>
 
-        {quiz.questions.length > 0 && (
-          <div className="mb-6 rounded-2xl border p-6 shadow-sm">
+        {quiz.questions &&
+          quiz.questions.length > 0 && (
+            <div className="mb-6 rounded-2xl border p-6 shadow-sm">
+              <h2 className="mb-5 text-2xl font-bold">
+                Questions ({quiz.questions.length})
+              </h2>
 
-            <h2 className="mb-5 text-2xl font-bold">
-              Questions ({quiz.questions.length})
-            </h2>
-
-            {quiz.questions.map((item, index) => (
-              <div
-                key={item.id}
-                className="mb-4 rounded-xl border p-4"
-              >
-
-                <div className="flex justify-between gap-4">
-                  <h3 className="font-semibold">
-                    {index + 1}. {item.question}
-                  </h3>
-
-                  <button
-                    onClick={() => removeQuestion(item.id)}
-                    className="text-sm text-red-600"
+              {quiz.questions.map(
+                (item, index) => (
+                  <div
+                    key={item.id}
+                    className="mb-4 rounded-xl border p-4"
                   >
-                    Remove
-                  </button>
-                </div>
+                    <div className="flex justify-between gap-4">
+                      <h3 className="font-semibold">
+                        {index + 1}.{" "}
+                        {item.questionText}
+                      </h3>
 
-                <div className="mt-3 space-y-2">
-                  {item.options.map(
-                    (option, optionIndex) => (
-                      <p
-                        key={optionIndex}
-                        className={
-                          optionIndex === item.correctAnswer
-                            ? "font-semibold"
-                            : ""
+                      <button
+                        onClick={() =>
+                          removeQuestion(
+                            String(item.id)
+                          )
                         }
+                        className="text-sm text-red-600 hover:underline"
                       >
-                        {String.fromCharCode(65 + optionIndex)}.{" "}
-                        {option}
+                        Remove
+                      </button>
+                    </div>
 
-                        {optionIndex === item.correctAnswer &&
-                          " ✓"}
-                      </p>
-                    )
-                  )}
-                </div>
+                    {item.imageUrl && (
+                      <img
+                        src={item.imageUrl}
+                        alt="Question"
+                        className="mt-4 max-h-48 rounded-lg border object-contain"
+                      />
+                    )}
 
-              </div>
-            ))}
+                    <div className="mt-3 space-y-2">
+                      {item.options.map(
+                        (option, optionIndex) => (
+                          <p
+                            key={option.id}
+                            className={
+                              option.isCorrect
+                                ? "font-semibold"
+                                : ""
+                            }
+                          >
+                            {String.fromCharCode(
+                              65 + optionIndex
+                            )}
+                            . {option.text}
 
-          </div>
+                            {option.isCorrect &&
+                              " ✓"}
+                          </p>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+        {error && (
+          <p className="mb-4 rounded-lg bg-red-50 p-3 text-red-600">
+            {error}
+          </p>
         )}
 
         <button
-          onClick={publishQuiz}
-          className="w-full rounded-xl bg-black px-6 py-4 text-lg font-semibold text-white"
+          onClick={handlePublish}
+          disabled={saving}
+          className="w-full rounded-xl bg-black px-6 py-4 text-lg font-semibold text-white disabled:opacity-50"
         >
-          Publish Quiz
+          {saving ? "Publishing..." : "Publish Quiz"}
         </button>
-
       </div>
     </main>
   );

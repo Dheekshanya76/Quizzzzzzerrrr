@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createQuiz } from "../../../lib/api";
 
 export default function CreateQuizPage() {
   const router = useRouter();
@@ -9,30 +10,33 @@ export default function CreateQuizPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function createQuiz() {
+  async function handleCreateQuiz() {
     if (!title.trim()) {
       setError("Quiz title is required.");
       return;
     }
 
     setError("");
+    setLoading(true);
 
-    const quizId = crypto.randomUUID();
-
-    localStorage.setItem(
-      `quiz-${quizId}`,
-      JSON.stringify({
-        id: quizId,
+    try {
+      const quiz = await createQuiz({
         title: title.trim(),
         description: description.trim(),
-        questions: [],
-        published: false,
-        code: "",
-      })
-    );
+      });
 
-    router.push(`/host/quiz/${quizId}`);
+      router.push(`/host/quiz/${quiz.id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to create quiz."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -40,7 +44,10 @@ export default function CreateQuizPage() {
       <div className="mx-auto max-w-2xl">
 
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold">Quizora</h1>
+          <h1 className="text-4xl font-bold">
+            Quizora
+          </h1>
+
           <p className="mt-2 text-gray-600">
             Create a Quiz
           </p>
@@ -61,7 +68,8 @@ export default function CreateQuizPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Enter quiz title"
-            className="mb-5 w-full rounded-lg border p-3 outline-none focus:ring-2"
+            disabled={loading}
+            className="mb-5 w-full rounded-lg border p-3 outline-none focus:ring-2 disabled:opacity-50"
           />
 
           <label className="mb-2 block font-medium">
@@ -73,7 +81,8 @@ export default function CreateQuizPage() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Enter quiz description"
             rows={4}
-            className="mb-5 w-full rounded-lg border p-3 outline-none focus:ring-2"
+            disabled={loading}
+            className="mb-5 w-full rounded-lg border p-3 outline-none focus:ring-2 disabled:opacity-50"
           />
 
           {error && (
@@ -83,10 +92,11 @@ export default function CreateQuizPage() {
           )}
 
           <button
-            onClick={createQuiz}
-            className="w-full rounded-lg bg-black px-6 py-3 font-semibold text-white"
+            onClick={handleCreateQuiz}
+            disabled={loading}
+            className="w-full rounded-lg bg-black px-6 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Create Quiz
+            {loading ? "Creating Quiz..." : "Create Quiz"}
           </button>
 
         </div>
