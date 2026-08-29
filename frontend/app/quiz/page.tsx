@@ -1,98 +1,96 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type Question = {
-  id: string;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-};
-
-type Quiz = {
-  id: string;
-  title: string;
-  description: string;
-  questions: Question[];
-  published: boolean;
-  code: string;
-};
+import {
+  getQuizByCode,
+  submitQuiz as submitQuizApi,
+  type QuizResponse,
+} from "../../lib/api";
 
 export default function QuizPage() {
-  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [quiz, setQuiz] = useState<QuizResponse | null>(null);
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [participantName, setParticipantName] = useState("");
+  const [answers, setAnswers] = useState<
+    (number | null)[]
+  >([]);
+  const [participantName, setParticipantName] =
+    useState("");
+  const [participantId, setParticipantId] =
+    useState("");
   const [quizCode, setQuizCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    async function loadQuiz() {
+      const params = new URLSearchParams(
+        window.location.search
+      );
 
-    const name = params.get("name") || "Participant";
-    const code = (params.get("code") || "").toUpperCase();
+      const name =
+        params.get("name") || "Participant";
 
-    setParticipantName(name);
-    setQuizCode(code);
+      const code = (
+        params.get("code") || ""
+      ).toUpperCase();
 
-    /*
-     * Find the published quiz using its quiz code.
-     *
-     * Person 1 stores quizzes as:
-     * quiz-{quizId}
-     *
-     * So we check localStorage for a quiz
-     * whose published code matches the participant's code.
-     */
-    let foundQuiz: Quiz | null = null;
+      const id =
+        params.get("participantId") || "";
 
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+      setParticipantName(name);
+      setQuizCode(code);
+      setParticipantId(id);
 
-      if (!key || !key.startsWith("quiz-")) {
-        continue;
+      if (!code) {
+        setError("Quiz code is missing.");
+        setLoading(false);
+        return;
       }
 
-      const storedQuiz = localStorage.getItem(key);
-
-      if (!storedQuiz) {
-        continue;
+      if (!id) {
+        setError(
+          "Participant information is missing. Please join the quiz again."
+        );
+        setLoading(false);
+        return;
       }
 
       try {
-        const parsedQuiz: Quiz = JSON.parse(storedQuiz);
+        const quizData =
+          await getQuizByCode(code);
 
         if (
-          parsedQuiz.published &&
-          parsedQuiz.code.toUpperCase() === code
+          !quizData.questions ||
+          quizData.questions.length === 0
         ) {
-          foundQuiz = parsedQuiz;
-          break;
+          setError(
+            "This quiz does not contain any questions."
+          );
+          setLoading(false);
+          return;
         }
-      } catch {
-        // Ignore invalid localStorage entries
+
+        setQuiz(quizData);
+
+        setAnswers(
+          new Array(
+            quizData.questions.length
+          ).fill(null)
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load quiz."
+        );
+      } finally {
+        setLoading(false);
       }
     }
 
-    if (!foundQuiz) {
-      setError(
-        "Quiz not found. Please check the quiz code and make sure the host has published the quiz."
-      );
-      setLoading(false);
-      return;
-    }
-
-    if (foundQuiz.questions.length === 0) {
-      setError("This quiz does not contain any questions.");
-      setLoading(false);
-      return;
-    }
-
-    setQuiz(foundQuiz);
-    setAnswers(new Array(foundQuiz.questions.length).fill(-1));
-    setLoading(false);
+    loadQuiz();
   }, []);
 
   function selectAnswer(optionIndex: number) {
@@ -109,11 +107,15 @@ export default function QuizPage() {
     }
 
     const updatedAnswers = [...answers];
+
     updatedAnswers[current] = selected;
 
     setAnswers(updatedAnswers);
 
-    if (current === quiz.questions.length - 1) {
+    if (
+      current ===
+      quiz.questions.length - 1
+    ) {
       submitQuiz(updatedAnswers);
       return;
     }
@@ -121,10 +123,9 @@ export default function QuizPage() {
     const nextQuestion = current + 1;
 
     setCurrent(nextQuestion);
+
     setSelected(
-      updatedAnswers[nextQuestion] !== -1
-        ? updatedAnswers[nextQuestion]
-        : null
+      updatedAnswers[nextQuestion] ?? null
     );
 
     setError("");
@@ -148,63 +149,94 @@ export default function QuizPage() {
     setCurrent(previousQuestion);
 
     setSelected(
-      updatedAnswers[previousQuestion] !== -1
-        ? updatedAnswers[previousQuestion]
-        : null
+      updatedAnswers[previousQuestion] ?? null
     );
 
     setError("");
   }
 
-  function submitQuiz(finalAnswers: number[]) {
+  async function submitQuiz(
+    finalAnswers: (number | null)[]
+  ) {
     if (!quiz) return;
 
-    let score = 0;
+    if (!participantId) {
+      setError(
+        "Participant ID is missing. Please join the quiz again."
+      );
+      return;
+    }
 
-    quiz.questions.forEach((question, index) => {
-      if (finalAnswers[index] === question.correctAnswer) {
-        score++;
-      }
-    });
+    setSubmitting(true);
+    setError("");
 
-    const percentage =
-      quiz.questions.length > 0
-        ? Math.round(
-            (score / quiz.questions.length) * 100
-          )
-        : 0;
+    try {
+      const formattedAnswers =
+        quiz.questions.map(
+          (question, index) => {
+            const selectedIndex =
+              finalAnswers[index];
 
-    const result = {
-      name: participantName,
-      code: quizCode,
-      quizId: quiz.id,
-      quizTitle: quiz.title,
-      score,
-      total: quiz.questions.length,
-      percentage,
-    };
+            if (
+              selectedIndex === null ||
+              selectedIndex === undefined
+            ) {
+              return null;
+            }
 
-    /*
-     * Save result locally so the result page
-     * can display the participant's score.
-     */
-    localStorage.setItem(
-      "latest-result",
-      JSON.stringify(result)
-    );
+            const selectedOption =
+              question.options[selectedIndex];
 
-    window.location.href =
-      `/results?name=${encodeURIComponent(
-        participantName
-      )}&code=${encodeURIComponent(
-        quizCode
-      )}&score=${score}&total=${quiz.questions.length}`;
+            if (!selectedOption) {
+              return null;
+            }
+
+            return {
+              questionId: question.id,
+              selectedOptionId:
+                selectedOption.id,
+            };
+          }
+        ).filter(
+          (
+            answer
+          ): answer is {
+            questionId: string | number;
+            selectedOptionId: string | number;
+          } => answer !== null
+        );
+
+      const result =
+        await submitQuizApi(
+          quizCode,
+          participantId,
+          formattedAnswers
+        );
+
+      window.location.href =
+        `/results?name=${encodeURIComponent(
+          participantName
+        )}&code=${encodeURIComponent(
+          quizCode
+        )}&score=${result.score}&total=${result.total}&participantId=${encodeURIComponent(
+          participantId
+        )}`;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit quiz."
+      );
+      setSubmitting(false);
+    }
   }
 
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-lg">Loading quiz...</p>
+        <p className="text-lg">
+          Loading quiz...
+        </p>
       </main>
     );
   }
@@ -214,7 +246,7 @@ export default function QuizPage() {
       <main className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-2xl border p-8 text-center shadow-sm">
           <h1 className="mb-4 text-2xl font-bold">
-            Unable to Join Quiz
+            Unable to Load Quiz
           </h1>
 
           <p className="mb-6 text-red-600">
@@ -223,7 +255,8 @@ export default function QuizPage() {
 
           <button
             onClick={() => {
-              window.location.href = "/join";
+              window.location.href =
+                "/join";
             }}
             className="rounded-lg bg-black px-6 py-3 font-semibold text-white"
           >
@@ -238,7 +271,8 @@ export default function QuizPage() {
     return null;
   }
 
-  const question = quiz.questions[current];
+  const question =
+    quiz.questions[current];
 
   return (
     <main className="min-h-screen p-6">
@@ -253,7 +287,7 @@ export default function QuizPage() {
             </h1>
 
             <p className="mt-1 text-gray-600">
-              Quiz Code: {quiz.code}
+              Quiz Code: {quizCode}
             </p>
           </div>
 
@@ -270,7 +304,7 @@ export default function QuizPage() {
 
         </div>
 
-        {/* Quiz title */}
+        {/* Quiz information */}
         <div className="mb-6">
           <h2 className="text-2xl font-bold">
             {quiz.title}
@@ -287,29 +321,38 @@ export default function QuizPage() {
         <div className="rounded-2xl border p-6 shadow-sm">
 
           <h3 className="mb-6 text-xl font-semibold">
-            {question.question}
+            {question.questionText}
           </h3>
+
+          {/* Question image */}
+          {question.imageUrl && (
+            <img
+              src={question.imageUrl}
+              alt="Question"
+              className="mb-6 max-h-80 w-full rounded-lg object-contain"
+            />
+          )}
 
           {/* Options */}
           <div className="space-y-3">
 
             {question.options.map(
               (option, optionIndex) => {
-
                 const isSelected =
                   selected === optionIndex;
 
                 return (
                   <button
-                    key={optionIndex}
+                    key={String(option.id)}
                     onClick={() =>
                       selectAnswer(optionIndex)
                     }
+                    disabled={submitting}
                     className={`w-full rounded-lg border p-4 text-left transition ${
                       isSelected
                         ? "border-black bg-gray-200"
                         : "hover:bg-gray-50"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     <span className="mr-3 font-semibold">
                       {String.fromCharCode(
@@ -318,7 +361,7 @@ export default function QuizPage() {
                       .
                     </span>
 
-                    {option}
+                    {option.text}
                   </button>
                 );
               }
@@ -338,7 +381,10 @@ export default function QuizPage() {
 
             <button
               onClick={previous}
-              disabled={current === 0}
+              disabled={
+                current === 0 ||
+                submitting
+              }
               className="w-1/2 rounded-lg border px-6 py-3 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
@@ -346,11 +392,15 @@ export default function QuizPage() {
 
             <button
               onClick={next}
-              className="w-1/2 rounded-lg bg-black px-6 py-3 font-semibold text-white"
+              disabled={submitting}
+              className="w-1/2 rounded-lg bg-black px-6 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {current === quiz.questions.length - 1
-                ? "Submit Quiz"
-                : "Next"}
+              {submitting
+                ? "Submitting..."
+                : current ===
+                    quiz.questions.length - 1
+                  ? "Submit Quiz"
+                  : "Next"}
             </button>
 
           </div>
@@ -364,7 +414,8 @@ export default function QuizPage() {
             <span>Progress</span>
 
             <span>
-              {current + 1} / {quiz.questions.length}
+              {current + 1} /{" "}
+              {quiz.questions.length}
             </span>
           </div>
 
