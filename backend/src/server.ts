@@ -4,6 +4,7 @@ import { initializeDatabase } from "./db/index.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { questionRouter } from "./routes/question.routes.js";
+import { participantRouter } from "./routes/participant.routes.js";
 import { quizRouter } from "./routes/quiz.routes.js";
 
 const app = express();
@@ -13,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/health", healthRouter);
 app.use("/api/questions", questionRouter);
+app.use("/api/participants", participantRouter);
 app.use("/api/quizzes", quizRouter);
 app.use(errorMiddleware);
 
