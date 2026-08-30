@@ -6,7 +6,7 @@ const API_BASE_URL =
 export type QuizOptionResponse = {
   id: string | number;
   text: string;
-  isCorrect: boolean;
+  isCorrect?: boolean;
 };
 
 export type QuestionResponse = {
@@ -17,23 +17,37 @@ export type QuestionResponse = {
 };
 
 export type QuizResponse = {
-  id: string | number;
+  id?: string | number;
   title: string;
-  description: string | null;
+  description?: string | null;
   questions: QuestionResponse[];
   published?: boolean;
-  code: string | null;
+  code?: string | null;
 };
 
 export type ParticipantResponse = {
   id: string | number;
+  quizId?: string | number;
   name: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type QuizSubmissionResponse = {
-  participantId: string | number;
+  id?: string | number;
+  participantId?: string | number;
   score: number;
-  total: number;
+  totalQuestions: number;
+  percentage: string | number;
+  completionTime?: string;
+};
+
+export type LeaderboardEntry = {
+  participantName: string;
+  score: number;
+  totalQuestions: number;
+  percentage: string | number;
+  completionTime: string;
 };
 
 export type CreateQuizData = {
@@ -73,7 +87,7 @@ async function request<T>(
 
   if (!response.ok) {
     throw new Error(
-      data.error || "Something went wrong"
+      data?.error || "Something went wrong"
     );
   }
 
@@ -136,7 +150,7 @@ export function getQuizByCode(
   code: string
 ) {
   return request<QuizResponse>(
-    `/api/quizzes/code/${code}`
+    `/api/quizzes/code/${encodeURIComponent(code)}`
   );
 }
 
@@ -145,7 +159,7 @@ export function joinQuiz(
   name: string
 ) {
   return request<ParticipantResponse>(
-    `/api/quizzes/code/${code}/join`,
+    `/api/quizzes/code/${encodeURIComponent(code)}/join`,
     {
       method: "POST",
       body: JSON.stringify({ name }),
@@ -162,7 +176,7 @@ export function submitQuiz(
   }[]
 ) {
   return request<QuizSubmissionResponse>(
-    `/api/quizzes/code/${code}/submit`,
+    `/api/quizzes/code/${encodeURIComponent(code)}/submit`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -184,7 +198,7 @@ export function getParticipantResult(
 export function getLeaderboard(
   code: string
 ) {
-  return request<unknown>(
-    `/api/quizzes/code/${code}/leaderboard`
+  return request<LeaderboardEntry[]>(
+    `/api/quizzes/code/${encodeURIComponent(code)}/leaderboard`
   );
 }

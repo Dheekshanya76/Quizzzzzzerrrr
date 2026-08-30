@@ -1,27 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   getQuizByCode,
-  submitQuiz as submitQuizApi,
+  submitQuiz,
   type QuizResponse,
 } from "../../lib/api";
 
 export default function QuizPage() {
-  const [quiz, setQuiz] = useState<QuizResponse | null>(null);
+  const router = useRouter();
+
+  const [quiz, setQuiz] =
+    useState<QuizResponse | null>(null);
+
   const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<
-    (number | null)[]
-  >([]);
+
+  const [answers, setAnswers] =
+    useState<Record<string, string>>({});
+
   const [participantName, setParticipantName] =
     useState("");
+
   const [participantId, setParticipantId] =
     useState("");
-  const [quizCode, setQuizCode] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+
+  const [quizCode, setQuizCode] =
+    useState("");
+
+  const [error, setError] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [submitting, setSubmitting] =
+    useState(false);
 
   useEffect(() => {
     async function loadQuiz() {
@@ -49,21 +63,13 @@ export default function QuizPage() {
         return;
       }
 
-      if (!id) {
-        setError(
-          "Participant information is missing. Please join the quiz again."
-        );
-        setLoading(false);
-        return;
-      }
-
       try {
-        const quizData =
+        const data =
           await getQuizByCode(code);
 
         if (
-          !quizData.questions ||
-          quizData.questions.length === 0
+          !data.questions ||
+          data.questions.length === 0
         ) {
           setError(
             "This quiz does not contain any questions."
@@ -72,18 +78,12 @@ export default function QuizPage() {
           return;
         }
 
-        setQuiz(quizData);
-
-        setAnswers(
-          new Array(
-            quizData.questions.length
-          ).fill(null)
-        );
+        setQuiz(data);
       } catch (err) {
         setError(
           err instanceof Error
             ? err.message
-            : "Unable to load quiz."
+            : "Failed to load quiz."
         );
       } finally {
         setLoading(false);
@@ -93,141 +93,110 @@ export default function QuizPage() {
     loadQuiz();
   }, []);
 
-  function selectAnswer(optionIndex: number) {
-    setSelected(optionIndex);
-    setError("");
-  }
-
-  function next() {
-    if (!quiz) return;
-
-    if (selected === null) {
-      setError("Please select an answer.");
-      return;
-    }
-
-    const updatedAnswers = [...answers];
-
-    updatedAnswers[current] = selected;
-
-    setAnswers(updatedAnswers);
-
-    if (
-      current ===
-      quiz.questions.length - 1
-    ) {
-      submitQuiz(updatedAnswers);
-      return;
-    }
-
-    const nextQuestion = current + 1;
-
-    setCurrent(nextQuestion);
-
-    setSelected(
-      updatedAnswers[nextQuestion] ?? null
-    );
-
-    setError("");
-  }
-
-  function previous() {
-    if (!quiz || current === 0) {
-      return;
-    }
-
-    const updatedAnswers = [...answers];
-
-    if (selected !== null) {
-      updatedAnswers[current] = selected;
-    }
-
-    setAnswers(updatedAnswers);
-
-    const previousQuestion = current - 1;
-
-    setCurrent(previousQuestion);
-
-    setSelected(
-      updatedAnswers[previousQuestion] ?? null
-    );
-
-    setError("");
-  }
-
-  async function submitQuiz(
-    finalAnswers: (number | null)[]
+  function selectAnswer(
+    optionId: string
   ) {
     if (!quiz) return;
 
-    if (!participantId) {
+    const questionId = String(
+      quiz.questions[current].id
+    );
+
+    setAnswers((previous) => ({
+      ...previous,
+      [questionId]: optionId,
+    }));
+
+    setError("");
+  }
+
+  async function next() {
+    if (!quiz) return;
+
+    const question =
+      quiz.questions[current];
+
+    const selectedOptionId =
+      answers[String(question.id)];
+
+    if (!selectedOptionId) {
       setError(
-        "Participant ID is missing. Please join the quiz again."
+        "Please select an answer."
       );
       return;
     }
 
-    setSubmitting(true);
-    setError("");
+    if (
+      current <
+      quiz.questions.length - 1
+    ) {
+      setCurrent(
+        (previous) => previous + 1
+      );
+      setError("");
+      return;
+    }
+
+    if (!participantId) {
+      setError(
+        "Participant ID is missing."
+      );
+      return;
+    }
 
     try {
-      const formattedAnswers =
-        quiz.questions.map(
-          (question, index) => {
-            const selectedIndex =
-              finalAnswers[index];
-
-            if (
-              selectedIndex === null ||
-              selectedIndex === undefined
-            ) {
-              return null;
-            }
-
-            const selectedOption =
-              question.options[selectedIndex];
-
-            if (!selectedOption) {
-              return null;
-            }
-
-            return {
-              questionId: question.id,
-              selectedOptionId:
-                selectedOption.id,
-            };
-          }
-        ).filter(
-          (
-            answer
-          ): answer is {
-            questionId: string | number;
-            selectedOptionId: string | number;
-          } => answer !== null
-        );
+      setSubmitting(true);
+      setError("");
 
       const result =
-        await submitQuizApi(
+        await submitQuiz(
           quizCode,
           participantId,
-          formattedAnswers
+          quiz.questions.map(
+            (item) => ({
+              questionId: item.id,
+              selectedOptionId:
+                answers[String(item.id)],
+            })
+          )
         );
 
-      window.location.href =
+      /*
+       * IMPORTANT:
+       * Backend returns totalQuestions,
+       * NOT total.
+       */
+      const totalQuestions =
+        result.totalQuestions;
+
+      router.push(
         `/results?name=${encodeURIComponent(
           participantName
         )}&code=${encodeURIComponent(
           quizCode
-        )}&score=${result.score}&total=${result.total}&participantId=${encodeURIComponent(
-          participantId
-        )}`;
+        )}&score=${encodeURIComponent(
+          String(result.score)
+        )}&total=${encodeURIComponent(
+          String(totalQuestions)
+        )}`
+      );
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "Failed to submit quiz."
       );
+    } finally {
       setSubmitting(false);
+    }
+  }
+
+  function previous() {
+    if (current > 0) {
+      setCurrent(
+        (previous) => previous - 1
+      );
+      setError("");
     }
   }
 
@@ -241,7 +210,7 @@ export default function QuizPage() {
     );
   }
 
-  if (error && !quiz) {
+  if (!quiz) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-2xl border p-8 text-center shadow-sm">
@@ -250,14 +219,13 @@ export default function QuizPage() {
           </h1>
 
           <p className="mb-6 text-red-600">
-            {error}
+            {error || "Quiz not found."}
           </p>
 
           <button
-            onClick={() => {
-              window.location.href =
-                "/join";
-            }}
+            onClick={() =>
+              router.push("/join")
+            }
             className="rounded-lg bg-black px-6 py-3 font-semibold text-white"
           >
             Back to Join
@@ -267,20 +235,17 @@ export default function QuizPage() {
     );
   }
 
-  if (!quiz) {
-    return null;
-  }
-
   const question =
     quiz.questions[current];
+
+  const selectedOptionId =
+    answers[String(question.id)];
 
   return (
     <main className="min-h-screen p-6">
       <div className="mx-auto max-w-4xl">
 
-        {/* Header */}
         <div className="mb-8 flex items-center justify-between">
-
           <div>
             <h1 className="text-3xl font-bold">
               QUIZER
@@ -301,10 +266,8 @@ export default function QuizPage() {
               {quiz.questions.length}
             </p>
           </div>
-
         </div>
 
-        {/* Quiz information */}
         <div className="mb-6">
           <h2 className="text-2xl font-bold">
             {quiz.title}
@@ -317,14 +280,12 @@ export default function QuizPage() {
           )}
         </div>
 
-        {/* Question */}
         <div className="rounded-2xl border p-6 shadow-sm">
 
           <h3 className="mb-6 text-xl font-semibold">
             {question.questionText}
           </h3>
 
-          {/* Question image */}
           {question.imageUrl && (
             <img
               src={question.imageUrl}
@@ -333,26 +294,29 @@ export default function QuizPage() {
             />
           )}
 
-          {/* Options */}
           <div className="space-y-3">
 
             {question.options.map(
               (option, optionIndex) => {
+
                 const isSelected =
-                  selected === optionIndex;
+                  selectedOptionId ===
+                  String(option.id);
 
                 return (
                   <button
                     key={String(option.id)}
                     onClick={() =>
-                      selectAnswer(optionIndex)
+                      selectAnswer(
+                        String(option.id)
+                      )
                     }
                     disabled={submitting}
                     className={`w-full rounded-lg border p-4 text-left transition ${
                       isSelected
                         ? "border-black bg-gray-200"
                         : "hover:bg-gray-50"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                    }`}
                   >
                     <span className="mr-3 font-semibold">
                       {String.fromCharCode(
@@ -369,14 +333,12 @@ export default function QuizPage() {
 
           </div>
 
-          {/* Error */}
           {error && (
             <p className="mt-4 rounded-lg bg-red-50 p-3 text-red-600">
               {error}
             </p>
           )}
 
-          {/* Navigation */}
           <div className="mt-6 flex gap-3">
 
             <button
@@ -393,7 +355,7 @@ export default function QuizPage() {
             <button
               onClick={next}
               disabled={submitting}
-              className="w-1/2 rounded-lg bg-black px-6 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-1/2 rounded-lg bg-black px-6 py-3 font-semibold text-white disabled:opacity-50"
             >
               {submitting
                 ? "Submitting..."
@@ -404,14 +366,14 @@ export default function QuizPage() {
             </button>
 
           </div>
-
         </div>
 
-        {/* Progress */}
         <div className="mt-6">
 
           <div className="mb-2 flex justify-between text-sm text-gray-600">
-            <span>Progress</span>
+            <span>
+              Progress
+            </span>
 
             <span>
               {current + 1} /{" "}

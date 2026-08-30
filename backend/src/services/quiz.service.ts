@@ -132,7 +132,8 @@ export async function getPublishedQuizByCode(
        ) AS questions
      FROM quizzes q
      LEFT JOIN questions qs ON qs.quiz_id = q.id
-     WHERE q.code = $1 AND q.published = TRUE
+     WHERE UPPER(q.code) = UPPER($1)
+       AND q.published = TRUE
      GROUP BY q.id, q.title`,
     [code]
   );
@@ -156,8 +157,15 @@ export interface CreatedQuestion {
   }>;
 }
 
-export async function quizExists(client: PoolClient, quizId: string): Promise<boolean> {
-  const result = await client.query("SELECT 1 FROM quizzes WHERE id = $1", [quizId]);
+export async function quizExists(
+  client: PoolClient,
+  quizId: string
+): Promise<boolean> {
+  const result = await client.query(
+    "SELECT 1 FROM quizzes WHERE id = $1",
+    [quizId]
+  );
+
   return result.rowCount === 1;
 }
 
@@ -189,6 +197,7 @@ export async function createQuestion(
     );
 
     const question = questionResult.rows[0];
+
     const createdOptions: CreatedQuestion["options"] = [];
 
     for (const option of options) {
@@ -204,6 +213,7 @@ export async function createQuestion(
       );
 
       const createdOption = optionResult.rows[0];
+
       createdOptions.push({
         id: createdOption.id,
         text: createdOption.option_text,
@@ -225,6 +235,7 @@ export async function createQuestion(
     } catch {
       // Preserve the original database or validation error.
     }
+
     throw error;
   } finally {
     client.release();
@@ -262,13 +273,16 @@ export async function publishQuiz(id: string): Promise<Quiz | null> {
       try {
         const result = await client.query<Quiz>(
           `UPDATE quizzes
-           SET code = $1, published = TRUE, updated_at = NOW()
+           SET code = $1,
+               published = TRUE,
+               updated_at = NOW()
            WHERE id = $2
            RETURNING id, title, description, code, published, created_at, updated_at`,
           [code, id]
         );
 
         await client.query("COMMIT");
+
         return result.rows[0];
       } catch (error) {
         if (
@@ -280,7 +294,6 @@ export async function publishQuiz(id: string): Promise<Quiz | null> {
           throw error;
         }
       }
-
     }
 
     throw new Error("Unable to generate a unique quiz code");
@@ -290,6 +303,7 @@ export async function publishQuiz(id: string): Promise<Quiz | null> {
     } catch {
       // Preserve the original database or code-generation error.
     }
+
     throw error;
   } finally {
     client.release();
@@ -312,9 +326,14 @@ export async function joinPublishedQuiz(
     `INSERT INTO participants (quiz_id, name)
      SELECT id, $2
      FROM quizzes
-     WHERE code = $1 AND published = TRUE
-     RETURNING id, quiz_id AS "quizId", name,
-       created_at AS "createdAt", updated_at AS "updatedAt"`,
+     WHERE UPPER(code) = UPPER($1)
+       AND published = TRUE
+     RETURNING
+       id,
+       quiz_id AS "quizId",
+       name,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"`,
     [code, name]
   );
 
@@ -363,13 +382,21 @@ export async function submitQuiz(
     await client.query("BEGIN");
 
     const quizResult = await client.query<{ id: string }>(
-      "SELECT id FROM quizzes WHERE code = $1 AND published = TRUE FOR SHARE",
+      `SELECT id
+       FROM quizzes
+       WHERE UPPER(code) = UPPER($1)
+         AND published = TRUE
+       FOR SHARE`,
       [code]
     );
+
     const quiz = quizResult.rows[0];
 
     if (!quiz) {
-      throw new SubmissionError("Quiz not found or not published", 404);
+      throw new SubmissionError(
+        "Quiz not found or not published",
+        404
+      );
     }
 
     const participantResult = await client.query<{ id: string }>(
@@ -378,7 +405,10 @@ export async function submitQuiz(
     );
 
     if (!participantResult.rows[0]) {
-      throw new SubmissionError("Participant does not belong to this quiz", 404);
+      throw new SubmissionError(
+        "Participant does not belong to this quiz",
+        404
+      );
     }
 
     const questionResult = await client.query<{
@@ -403,32 +433,55 @@ export async function submitQuiz(
 
     for (const row of questionResult.rows) {
       let question = questions.get(row.id);
+
       if (!question) {
-        question = { options: new Map() };
+        question = {
+          options: new Map()
+        };
+
         questions.set(row.id, question);
       }
+
       if (row.option_id !== null) {
-        question.options.set(row.option_id, row.is_correct);
+        question.options.set(
+          row.option_id,
+          row.is_correct
+        );
       }
     }
 
     const duplicateQuestionIds = new Set<string>();
+
     let score = 0;
 
     for (const answer of answers) {
       if (duplicateQuestionIds.has(answer.questionId)) {
-        throw new SubmissionError("Each question may be answered only once", 400);
+        throw new SubmissionError(
+          "Each question may be answered only once",
+          400
+        );
       }
+
       duplicateQuestionIds.add(answer.questionId);
 
       const question = questions.get(answer.questionId);
+
       if (!question) {
-        throw new SubmissionError("Question does not belong to this quiz", 400);
+        throw new SubmissionError(
+          "Question does not belong to this quiz",
+          400
+        );
       }
 
-      const isCorrect = question.options.get(answer.selectedOptionId);
+      const isCorrect = question.options.get(
+        answer.selectedOptionId
+      );
+
       if (isCorrect === undefined) {
-        throw new SubmissionError("Selected option does not belong to this question", 400);
+        throw new SubmissionError(
+          "Selected option does not belong to this question",
+          400
+        );
       }
 
       if (isCorrect) {
@@ -437,21 +490,39 @@ export async function submitQuiz(
 
       await client.query(
         `INSERT INTO answers (
-           participant_id, question_id, selected_option_id, is_correct
+           participant_id,
+           question_id,
+           selected_option_id,
+           is_correct
          )
          VALUES ($1, $2, $3, $4)`,
-        [participantId, answer.questionId, answer.selectedOptionId, isCorrect]
+        [
+          participantId,
+          answer.questionId,
+          answer.selectedOptionId,
+          isCorrect
+        ]
       );
     }
 
     const totalQuestions = questions.size;
+
     const percentage =
-      totalQuestions === 0 ? 0 : Number(((score / totalQuestions) * 100).toFixed(2));
+      totalQuestions === 0
+        ? 0
+        : Number(
+            ((score / totalQuestions) * 100).toFixed(2)
+          );
 
     try {
       const result = await client.query<SubmittedResult>(
         `INSERT INTO results (
-           participant_id, quiz_id, score, total_questions, percentage, completion_time
+           participant_id,
+           quiz_id,
+           score,
+           total_questions,
+           percentage,
+           completion_time
          )
          VALUES ($1, $2, $3, $4, $5, NOW())
          RETURNING
@@ -460,20 +531,34 @@ export async function submitQuiz(
            total_questions AS "totalQuestions",
            percentage::text AS percentage,
            completion_time AS "completionTime"`,
-        [participantId, quiz.id, score, totalQuestions, percentage]
+        [
+          participantId,
+          quiz.id,
+          score,
+          totalQuestions,
+          percentage
+        ]
       );
 
       await client.query("COMMIT");
+
       return result.rows[0];
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new SubmissionError("Quiz has already been submitted", 409);
+        throw new SubmissionError(
+          "Quiz has already been submitted",
+          409
+        );
       }
+
       throw error;
     }
   } catch (error) {
     const submissionError = isUniqueViolation(error)
-      ? new SubmissionError("Quiz has already been submitted", 409)
+      ? new SubmissionError(
+          "Quiz has already been submitted",
+          409
+        )
       : error;
 
     try {
@@ -481,6 +566,7 @@ export async function submitQuiz(
     } catch {
       // Preserve the original submission or database error.
     }
+
     throw submissionError;
   } finally {
     client.release();
@@ -499,7 +585,9 @@ export async function getLeaderboardByCode(
   code: string
 ): Promise<LeaderboardEntry[] | null> {
   const quizResult = await pool.query(
-    "SELECT 1 FROM quizzes WHERE code = $1",
+    `SELECT 1
+     FROM quizzes
+     WHERE UPPER(code) = UPPER($1)`,
     [code]
   );
 
@@ -517,7 +605,7 @@ export async function getLeaderboardByCode(
      FROM results r
      INNER JOIN quizzes q ON q.id = r.quiz_id
      INNER JOIN participants p ON p.id = r.participant_id
-     WHERE q.code = $1
+     WHERE UPPER(q.code) = UPPER($1)
      ORDER BY r.score DESC, r.completion_time ASC`,
     [code]
   );

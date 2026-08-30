@@ -1,17 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { joinQuiz } from "../../lib/api";
 
 export default function JoinQuizPage() {
+  const router = useRouter();
+
   const [name, setName] = useState("");
   const [quizCode, setQuizCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleJoinQuiz() {
-    if (!name.trim() || !quizCode.trim()) {
-      setError("Please enter your name and quiz code.");
+    console.log("JOIN BUTTON CLICKED");
+
+    const cleanName = name.trim();
+    const cleanCode = quizCode.trim().toUpperCase();
+
+    if (!cleanName) {
+      setError("Please enter your name.");
+      return;
+    }
+
+    if (!cleanCode) {
+      setError("Please enter the quiz code.");
       return;
     }
 
@@ -19,20 +32,27 @@ export default function JoinQuizPage() {
     setLoading(true);
 
     try {
+      console.log("Joining:", cleanCode, cleanName);
+
       const participant = await joinQuiz(
-        quizCode.trim().toUpperCase(),
-        name.trim()
+        cleanCode,
+        cleanName
       );
 
-      window.location.href =
+      console.log("Participant:", participant);
+
+      router.push(
         `/quiz?name=${encodeURIComponent(
-          name.trim()
+          cleanName
         )}&code=${encodeURIComponent(
-          quizCode.trim().toUpperCase()
+          cleanCode
         )}&participantId=${encodeURIComponent(
           String(participant.id)
-        )}`;
+        )}`
+      );
     } catch (err) {
+      console.error("JOIN ERROR:", err);
+
       setError(
         err instanceof Error
           ? err.message
@@ -64,8 +84,7 @@ export default function JoinQuizPage() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter your name"
-          disabled={loading}
-          className="w-full border rounded-lg p-3 mb-5 disabled:opacity-50"
+          className="w-full border rounded-lg p-3 mb-5"
         />
 
         <label className="block font-medium mb-2">
@@ -79,20 +98,20 @@ export default function JoinQuizPage() {
             setQuizCode(e.target.value.toUpperCase())
           }
           placeholder="Enter quiz code"
-          disabled={loading}
-          className="w-full border rounded-lg p-3 mb-4 uppercase disabled:opacity-50"
+          className="w-full border rounded-lg p-3 mb-5 uppercase"
         />
 
         {error && (
-          <p className="text-red-600 text-sm mb-4">
+          <div className="mb-5 rounded-lg border border-red-300 bg-red-50 p-3 text-red-600">
             {error}
-          </p>
+          </div>
         )}
 
         <button
+          type="button"
           onClick={handleJoinQuiz}
           disabled={loading}
-          className="w-full bg-black text-white py-3 rounded-lg font-medium disabled:opacity-50"
+          className="w-full rounded-lg bg-black px-6 py-4 font-semibold text-white cursor-pointer hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Joining..." : "Join Quiz"}
         </button>
